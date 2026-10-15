@@ -3,3 +3,4 @@ auth_info/
 session.txt
 log.txt
 *.backup
+config.json

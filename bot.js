@@ -31,8 +31,30 @@ fs.watchFile('./palabras.json', () => {
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
-const OWNER_NUMBER = '5492396522761';
+// 📂 Lee o crea el config.json con el número del dueño
+let OWNER_NUMBER;
 
+async function cargarOwnerNumber() {
+    // Si ya existe config.json, lo usamos
+    if (fs.existsSync('./config.json')) {
+        try {
+            const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+            OWNER_NUMBER = config.ownerNumber;
+            console.log(`✅ Número cargado: ${OWNER_NUMBER}`);
+            return;
+        } catch (e) {
+            console.error('Error al leer config.json');
+        }
+    }
+
+    // Si no existe, preguntamos por consola
+    const numero = await question('📱 Ingresá tu número de WhatsApp (código país, sin + ni espacios):\n');
+    OWNER_NUMBER = numero.replace(/[^0-9]/g, '');
+    fs.writeFileSync('./config.json', JSON.stringify({ ownerNumber: OWNER_NUMBER }, null, 2));
+    console.log(`✅ Número guardado: ${OWNER_NUMBER}`);
+    console.log('💡 Si te equivocaste, borrá config.json y volvé a arrancar el bot.\n');
+    console.log('💡 Si te equivocaste, borrá config.json y volvé a arrancar el bot.\n');
+}
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
 
@@ -174,4 +196,8 @@ if (PALABRAS_CLAVE.includes(text) && (soyYo || isOwner)) {            if (!quote
     });
 }
 
-connectToWhatsApp();
+// Arranca todo en orden
+(async () => {
+    await cargarOwnerNumber();
+    connectToWhatsApp();
+})();
