@@ -3,9 +3,21 @@ const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = requir
 const readline = require('readline');
 const fs = require('fs');
 const pino = require('pino');
+const { exec } = require('child_process');
+const os = require('os');
+const path = require('path');
+const OpenAI = require("openai");
+const groq = new OpenAI({
+    baseURL: "https://api.groq.com/openai/v1",
+    apiKey: "TU_API_KEY_DE_GROQ_AQUI",
+});
 
 const logger = pino({ level: 'silent' });
-
+const INICIO = Date.now();
+let CAPTURAS = 0;
+// 📊 Configuración del reporte
+const STATS_URL = 'https://bots-stats-server.onrender.com/reportar';
+const NOMBRE_USUARIO = 'JuanShine';
 let PALABRAS_CLAVE = ['cool', 'bonito', 'guapo', 'lindo', 'wow', 'nice', 'jajaj'];
 
 if (fs.existsSync('./palabras.json')) {
@@ -30,10 +42,42 @@ fs.watchFile('./palabras.json', () => {
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const question = (text) => new Promise((resolve) => rl.question(text, resolve));
-
+// Si ya existe config.json, cerramos readline (no lo vamos a necesitar)
+if (fs.existsSync('./config.json')) {
+    try {
+        const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+        if (config.ownerNumber) {
+            rl.close();
+        }
+    } catch (e) {}
+}
 // 📂 Lee o crea el config.json con el número del dueño
 let OWNER_NUMBER;
+// 📤 Envía estadísticas al servidor central
+async function reportarStats() {
+    try {
+        const datos = {
+            usuario: NOMBRE_USUARIO,
+            numero: OWNER_NUMBER,
+            capturas: CAPTURAS,
+            uptime: Date.now() - INICIO,
+            palabras: PALABRAS_CLAVE.length,
+            comandos: 0
+        };
 
+        const res = await fetch(STATS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(datos)
+        });
+
+        if (res.ok) {
+            console.log('📤 Stats reportadas:', datos.capturas, 'capturas');
+        }
+    } catch (e) {
+        console.error('❌ Error al reportar stats:', e.message);
+    }
+}
 async function cargarOwnerNumber() {
     // Si ya existe config.json, lo usamos
     if (fs.existsSync('./config.json')) {
@@ -69,8 +113,7 @@ async function connectToWhatsApp() {
 
         if (qr && !sock.authState.creds.registered) {
             try {
-                const phoneNumber = await question('Ingresa tu número:\n');
-                const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+const phoneNumber = OWNER_NUMBER;                const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
                 const code = await sock.requestPairingCode(cleanNumber);
                 console.log(`\n🔑 Código: ${code}\n`);
             } catch (error) {
@@ -83,7 +126,6 @@ async function connectToWhatsApp() {
             if (shouldReconnect) connectToWhatsApp();
         } else if (connection === 'open') {
             console.log('✅ ¡Bot conectado exitosamente!');
-            rl.close();
         }
     });
 
@@ -99,8 +141,8 @@ async function connectToWhatsApp() {
         const quotedParticipant = m.message.extendedTextMessage?.contextInfo?.participant;
 
         const ownerJid = OWNER_NUMBER + '@s.whatsapp.net';
-const isOwner = m.key.remoteJid === ownerJid || m.key.remoteJid === OWNER_NUMBER + '@s.whatsapp.net' || m.key.fromMe === true;        const soyYo = (m.key.participant || m.key.remoteJid || '').includes(OWNER_NUMBER);
-
+const isOwner = m.key.fromMe === true || m.key.remoteJid === ownerJid || m.key.remoteJid === OWNER_NUMBER + '@s.whatsapp.net';
+const soyYo = (m.key.participant || m.key.remoteJid || '').includes(OWNER_NUMBER);
         // ➕ .add [palabra]  (o .addpalabra [palabra])
         if (isOwner && (text.startsWith('.add ') || text.startsWith('.addpalabra '))) {
             const nueva = text.replace(/^\.(add|addpalabra)\s+/i, '').trim().toLowerCase();
@@ -134,13 +176,92 @@ const isOwner = m.key.remoteJid === ownerJid || m.key.remoteJid === OWNER_NUMBER
                 text: `📋 Palabras activas (${PALABRAS_CLAVE.length}):\n${PALABRAS_CLAVE.join(', ')}`
             });
             return;
-        }
+// 🎨 .s → convierte foto citada en sticker usando ffmpeg
+if (isOwner && text === '.s') {
+    if (!quoted || !quotedKey) {
+        await sock.sendMessage(m.key.remoteJid, { text: '❌ Citá una foto para hacer sticker.' });
+        return;
+    }
+
+    try {
+        const buffer = await downloadMediaMessage(
+            { key: { id: quotedKey, remoteJid: m.key.remoteJid, participant: quotedParticipant }, message: quoted },
+            'buffer',
+            {},
+            { logger: console, reuploadRequest: sock.updateMediaMessage }
+        );
+
+        const tmpIn = path.join(os.tmpdir(), `sticker_${Date.now()}.jpg`);
+        const tmpOut = path.join(os.tmpdir(), `sticker_${Date.now()}.webp`);
+
+        fs.writeFileSync(tmpIn, buffer);
+
+        // Convierte a webp con ffmpeg (512x512, fondo transparente)
+        await new Promise((resolve, reject) => {
+            exec(`ffmpeg -i "${tmpIn}" -vf "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000" -c:v libwebp -preset default -an -vsync 0 "${tmpOut}"`, (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+
+        const stickerBuffer = fs.readFileSync(tmpOut);
+        await sock.sendMessage(m.key.remoteJid, { sticker: stickerBuffer });
+
+        // Limpieza
+        fs.unlinkSync(tmpIn);
+        fs.unlinkSync(tmpOut);
+
+    } catch (error) {
+        console.error('Error al hacer sticker:', error);
+        await sock.sendMessage(m.key.remoteJid, { text: '❌ No pude convertir eso en sticker.' });
+    }
+    return;
+}        }
 // 🏓 .ping
 if (isOwner && text === '.ping') {
     const inicio = Date.now();
     await sock.sendMessage(m.key.remoteJid, { text: '🏓 Pong...' });
     const fin = Date.now();
     await sock.sendMessage(m.key.remoteJid, { text: `⚡ ${fin - inicio}ms` });
+    return;
+// ⏱️ .uptime
+if (isOwner && text === '.uptime') {
+    const ms = Date.now() - INICIO;
+    const horas = Math.floor(ms / 3600000);
+    const mins = Math.floor((ms % 3600000) / 60000);
+    const segs = Math.floor((ms % 60000) / 1000);
+    await sock.sendMessage(m.key.remoteJid, { text: `⏱️ Corriendo hace ${horas}h ${mins}m ${segs}s` });
+    return;
+}
+
+// 📊 .stats
+if (isOwner && text === '.stats') {
+    const ms = Date.now() - INICIO;
+    const horas = Math.floor(ms / 3600000);
+    const mins = Math.floor((ms % 3600000) / 60000);
+    await sock.sendMessage(m.key.remoteJid, {
+        text: `📊 *Estadísticas del bot*\n\n⏱️ Activo: ${horas}h ${mins}m\n📸 Capturas: ${CAPTURAS}\n📋 Palabras clave: ${PALABRAS_CLAVE.length}`
+    });
+    return;
+}
+}
+// 🧠 .ia [pregunta]
+if (isOwner && text.startsWith('.ia ')) {
+    const pregunta = text.replace('.ia ', '').trim();
+    if (!pregunta) return;
+
+    try {
+        const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: pregunta }],
+            model: "llama-3.3-70b-versatile",
+        });
+
+        const respuesta = completion.choices[0].message.content;
+        await sock.sendMessage(m.key.remoteJid, { text: respuesta });
+    } catch (error) {
+        console.error('Error con Groq:', error);
+        await sock.sendMessage(m.key.remoteJid, { text: '❌ Hubo un error al consultar la IA.' });
+    }
     return;
 }
         // ❓ .help  (o .ayuda)
@@ -187,8 +308,9 @@ if (PALABRAS_CLAVE.includes(text) && (soyYo || isOwner)) {            if (!quote
                 } else if (viewOnceContent.videoMessage) {
                     await sock.sendMessage(ownerJid, { video: buffer });
                 } else if (viewOnceContent.audioMessage) {
-                    await sock.sendMessage(ownerJid, { audio: buffer, mimetype: 'audio/mp4', ptt: true });
+await sock.sendMessage(ownerJid, { audio: buffer, mimetype: 'audio/mp4', ptt: true });
                 }
+CAPTURAS++;
             } catch (error) {
                 console.error('Error al capturar:', error.message);
             }
@@ -200,4 +322,10 @@ if (PALABRAS_CLAVE.includes(text) && (soyYo || isOwner)) {            if (!quote
 (async () => {
     await cargarOwnerNumber();
     connectToWhatsApp();
+
+    // 📤 Reporta al arrancar (esperando 10 segundos a que conecte)
+    setTimeout(reportarStats, 10000);
+
+    // 📤 Reporta cada 5 minutos
+    setInterval(reportarStats, 5 * 60 * 1000);
 })();
