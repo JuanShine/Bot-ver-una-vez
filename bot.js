@@ -1,3 +1,4 @@
+// Prueba de actualizacion automatica - 17/10
 const makeWASocket = require('@whiskeysockets/baileys').default;
 const { useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const readline = require('readline');
