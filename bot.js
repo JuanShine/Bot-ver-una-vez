@@ -214,6 +214,25 @@ if (isOwner && text === '.s') {
     }
     return;
 }        }
+// 🔄 .update → Busca actualizaciones en GitHub y reinicia
+if (isOwner && text === '.update') {
+    try {
+        await sock.sendMessage(m.key.remoteJid, { text: '🔄 Buscando actualizaciones...' });
+        
+        const { execSync } = require('child_process');
+const resultado = execSync('git pull', { cwd: __dirname, encoding: 'utf8' });
+        if (resultado.includes('Already up to date') || resultado.includes('Ya está actualizado')) {
+            await sock.sendMessage(m.key.remoteJid, { text: '✅ El bot ya está actualizado.' });
+        } else {
+            await sock.sendMessage(m.key.remoteJid, { text: '🚀 ¡Cambios encontrados! Reiniciando...' });
+            setTimeout(() => process.exit(0), 2000);
+        }
+    } catch (error) {
+        console.error('Error en update:', error.message);
+        await sock.sendMessage(m.key.remoteJid, { text: '❌ Error al actualizar. Avisale a JuanShine.' });
+    }
+    return;
+}
 // 🏓 .ping
 if (isOwner && text === '.ping') {
     const inicio = Date.now();
