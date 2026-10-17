@@ -6,18 +6,12 @@ const pino = require('pino');
 const { exec } = require('child_process');
 const os = require('os');
 const path = require('path');
-const OpenAI = require("openai");
-const groq = new OpenAI({
-    baseURL: "https://api.groq.com/openai/v1",
-    apiKey: "TU_API_KEY_DE_GROQ_AQUI",
-});
 
 const logger = pino({ level: 'silent' });
 const INICIO = Date.now();
 let CAPTURAS = 0;
 // 📊 Configuración del reporte
 const STATS_URL = 'https://bots-stats-server.onrender.com/reportar';
-const NOMBRE_USUARIO = 'JuanShine';
 let PALABRAS_CLAVE = ['cool', 'bonito', 'guapo', 'lindo', 'wow', 'nice', 'jajaj'];
 
 if (fs.existsSync('./palabras.json')) {
@@ -30,7 +24,6 @@ if (fs.existsSync('./palabras.json')) {
     fs.writeFileSync('./palabras.json', JSON.stringify(PALABRAS_CLAVE, null, 2));
 }
 
-// 🔄 Recarga las palabras si editas el archivo
 fs.watchFile('./palabras.json', () => {
     try {
         PALABRAS_CLAVE = JSON.parse(fs.readFileSync('./palabras.json', 'utf8'));
@@ -53,6 +46,7 @@ if (fs.existsSync('./config.json')) {
 }
 // 📂 Lee o crea el config.json con el número del dueño
 let OWNER_NUMBER;
+let NOMBRE_USUARIO = 'SinNombre';
 // 📤 Envía estadísticas al servidor central
 async function reportarStats() {
     try {
@@ -84,6 +78,7 @@ async function cargarOwnerNumber() {
         try {
             const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
             OWNER_NUMBER = config.ownerNumber;
+if (config.nombreUsuario) NOMBRE_USUARIO = config.nombreUsuario;
             console.log(`✅ Número cargado: ${OWNER_NUMBER}`);
             return;
         } catch (e) {
@@ -93,8 +88,10 @@ async function cargarOwnerNumber() {
 
     // Si no existe, preguntamos por consola
     const numero = await question('📱 Ingresá tu número de WhatsApp (código país, sin + ni espacios):\n');
+const nombre = await question('👤 Ingresá tu nombre para el panel de stats:\n');
+NOMBRE_USUARIO = nombre.trim() || 'SinNombre';
     OWNER_NUMBER = numero.replace(/[^0-9]/g, '');
-    fs.writeFileSync('./config.json', JSON.stringify({ ownerNumber: OWNER_NUMBER }, null, 2));
+fs.writeFileSync('./config.json', JSON.stringify({ ownerNumber: OWNER_NUMBER, nombreUsuario: NOMBRE_USUARIO }, null, 2));
     console.log(`✅ Número guardado: ${OWNER_NUMBER}`);
     console.log('💡 Si te equivocaste, borrá config.json y volvé a arrancar el bot.\n');
     console.log('💡 Si te equivocaste, borrá config.json y volvé a arrancar el bot.\n');
@@ -244,25 +241,6 @@ if (isOwner && text === '.stats') {
     });
     return;
 }
-}
-// 🧠 .ia [pregunta]
-if (isOwner && text.startsWith('.ia ')) {
-    const pregunta = text.replace('.ia ', '').trim();
-    if (!pregunta) return;
-
-    try {
-        const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: pregunta }],
-            model: "llama-3.3-70b-versatile",
-        });
-
-        const respuesta = completion.choices[0].message.content;
-        await sock.sendMessage(m.key.remoteJid, { text: respuesta });
-    } catch (error) {
-        console.error('Error con Groq:', error);
-        await sock.sendMessage(m.key.remoteJid, { text: '❌ Hubo un error al consultar la IA.' });
-    }
-    return;
 }
         // ❓ .help  (o .ayuda)
         if (isOwner && (text === '.help' || text === '.ayuda')) {
