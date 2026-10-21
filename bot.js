@@ -7,6 +7,13 @@ const pino = require('pino');
 const { exec } = require('child_process');
 const os = require('os');
 const path = require('path');
+const http = require('http');
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot activo');
+}).listen(process.env.PORT || 3000, () => {
+    console.log('🌐 Servidor web escuchando');
+});
 
 const logger = pino({ level: 'silent' });
 const INICIO = Date.now();
@@ -98,9 +105,7 @@ fs.writeFileSync('./config.json', JSON.stringify({ ownerNumber: OWNER_NUMBER, no
     console.log('💡 Si te equivocaste, borrá config.json y volvé a arrancar el bot.\n');
 }
 async function connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-
-    const sock = makeWASocket({
+const { state, saveCreds } = await useMultiFileAuthState('auth_info');    const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
         logger: logger,
