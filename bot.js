@@ -105,12 +105,40 @@ fs.writeFileSync('./config.json', JSON.stringify({ ownerNumber: OWNER_NUMBER, no
     console.log('💡 Si te equivocaste, borrá config.json y volvé a arrancar el bot.\n');
 }
 async function connectToWhatsApp() {
-const { state, saveCreds } = await useMultiFileAuthState('auth_info');    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        logger: logger,
+let authDir = 'auth_info';
+if (process.env.SESSION_URL) {
+    console.log('📥 Descargando sesión...');
+    const https = require('https');
+    const os = require('os');
+    const path = require('path');
+    authDir = path.join(os.tmpdir(), 'auth_info');
+    if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+    const base64 = await new Promise((resolve, reject) => {
+        https.get(process.env.SESSION_URL, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => resolve(data));
+            res.on('error', reject);
+        }).on('error', reject);
     });
+    const json = Buffer.from(base64.trim(), 'base64').toString('utf8');
+    const archivos = JSON.parse(json);
+    for (const [nombre, contenido] of Object.entries(archivos)) {
+        const fullPath = path.join(authDir, nombre);
+        const dir = path.dirname(fullPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(fullPath, contenido);
+    }
+    console.log('✅ Sesión descargada');
+}
 
+const { state, saveCreds } = await useMultiFileAuthState(authDir);
+
+const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    logger: logger,
+});
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
