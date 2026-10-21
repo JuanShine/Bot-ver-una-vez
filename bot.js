@@ -268,6 +268,39 @@ const resultado = execSync('git pull', { cwd: __dirname, encoding: 'utf8' });
     }
     return;
 }
+// 🏳️‍🌈 .gay [@usuario] (o citando un mensaje)
+if (isOwner && text.startsWith('.gay')) {
+    let target = m.key.remoteJid;
+    let targetName = 'alguien';
+
+    // Si citaste un mensaje, le aplica el porcentaje al citado
+    if (quotedParticipant) {
+        target = quotedParticipant;
+        targetName = `@${quotedParticipant.split('@')[0]}`;
+    } 
+    // Si mencionaste a alguien con @, le aplica el porcentaje al mencionado
+    else if (m.message.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
+        target = m.message.extendedTextMessage.contextInfo.mentionedJid[0];
+        targetName = `@${target.split('@')[0]}`;
+    } 
+    // Si no citaste ni mencionaste, se lo aplica a vos
+    else {
+        targetName = 'Vos';
+    }
+
+    // Genera un número al azar entre 1 y 100
+    const porcentaje = Math.floor(Math.random() * 100) + 1;
+    
+    // Arma el mensaje
+    const mensaje = `🏳️‍🌈 *${targetName}* es ${porcentaje}% gay 🏳️‍🌈`;
+
+    // Envía el mensaje con menciones (para que le llegue la notificación)
+    await sock.sendMessage(m.key.remoteJid, { 
+        text: mensaje, 
+        mentions: target !== m.key.remoteJid ? [target] : []
+    });
+    return;
+}
 // 🏓 .ping
 if (isOwner && text === '.ping') {
     const inicio = Date.now();
