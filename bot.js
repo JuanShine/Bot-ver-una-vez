@@ -1,3 +1,4 @@
+//comprobar
 // V2 -descarga de sesion
 // Prueba de actualizacion automatica - 17/10
 const makeWASocket = require('@whiskeysockets/baileys').default;
