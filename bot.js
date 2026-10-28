@@ -269,6 +269,62 @@ const resultado = execSync('git pull', { cwd: __dirname, encoding: 'utf8' });
     }
     return;
 }
+// 🏳️‍⚧️ .trans [@usuario] (o citando)
+if (isOwner && text.startsWith('.trans')) {
+    let target = m.key.remoteJid;
+    let targetName = 'Vos';
+    if (quotedParticipant) {
+        target = quotedParticipant;
+        targetName = `@${quotedParticipant.split('@')[0]}`;
+    } else if (m.message.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
+        target = m.message.extendedTextMessage.contextInfo.mentionedJid[0];
+        targetName = `@${target.split('@')[0]}`;
+    }
+    const porcentaje = Math.floor(Math.random() * 100) + 1;
+    await sock.sendMessage(m.key.remoteJid, { 
+        text: `🏳️‍⚧️ *${targetName}* es ${porcentaje}% trans 🏳️‍⚧️`, 
+        mentions: target !== m.key.remoteJid ? [target] : []
+    });
+    return;
+}
+
+// 🏳️‍🌈 .lesbiana [@usuario] (o citando)
+if (isOwner && text.startsWith('.lesbiana')) {
+    let target = m.key.remoteJid;
+    let targetName = 'Vos';
+    if (quotedParticipant) {
+        target = quotedParticipant;
+        targetName = `@${quotedParticipant.split('@')[0]}`;
+    } else if (m.message.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
+        target = m.message.extendedTextMessage.contextInfo.mentionedJid[0];
+        targetName = `@${target.split('@')[0]}`;
+    }
+    const porcentaje = Math.floor(Math.random() * 100) + 1;
+    await sock.sendMessage(m.key.remoteJid, { 
+        text: `👩‍❤️‍💋‍👩 *${targetName}* es ${porcentaje}% lesbiana 👩‍❤️‍💋‍👩`, 
+        mentions: target !== m.key.remoteJid ? [target] : []
+    });
+    return;
+}
+
+// 🍆 .pete [@usuario] (o citando)
+if (isOwner && text.startsWith('.pete')) {
+    let target = m.key.remoteJid;
+    let targetName = 'Vos';
+    if (quotedParticipant) {
+        target = quotedParticipant;
+        targetName = `@${quotedParticipant.split('@')[0]}`;
+    } else if (m.message.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
+        target = m.message.extendedTextMessage.contextInfo.mentionedJid[0];
+        targetName = `@${target.split('@')[0]}`;
+    }
+    const porcentaje = Math.floor(Math.random() * 100) + 1;
+    await sock.sendMessage(m.key.remoteJid, { 
+        text: `🍆 *${targetName}* es ${porcentaje}% pete 🍆`, 
+        mentions: target !== m.key.remoteJid ? [target] : []
+    });
+    return;
+}
 // 🏳️‍🌈 .gay [@usuario] (o citando un mensaje)
 if (isOwner && text.startsWith('.gay')) {
     let target = m.key.remoteJid;
