@@ -224,7 +224,7 @@ app.post('/api/connect', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.SERVER_PORT || process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🌐 Servidor web listo en puerto ${PORT}`);
     setTimeout(reportarStats, 10000);
