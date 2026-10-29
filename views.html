@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conectar Bot</title>
+    <style>
+        body { font-family: sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .box { background: #1e293b; padding: 30px; border-radius: 10px; width: 300px; text-align: center; }
+        input { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #334155; background: #0f172a; color: white; }
+        button { width: 100%; padding: 10px; background: #3b82f6; border: none; border-radius: 5px; color: white; font-weight: bold; cursor: pointer; }
+        .code { font-size: 24px; font-weight: bold; color: #4ade80; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>Conectar WhatsApp</h2>
+        <div id="login-section">
+            <input type="password" id="password" placeholder="Contraseña">
+            <button onclick="login()">Entrar</button>
+        </div>
+        <div id="connect-section" style="display:none;">
+            <input type="text" id="number" placeholder="Tu número (ej: 549...)">
+            <button onclick="connect()">Vincular</button>
+            <div id="code-result" class="code"></div>
+        </div>
+    </div>
+
+    <script>
+        const PASSWORD = "micontraseña123"; // Cambiá esto por la que quieras
+
+        function login() {
+            const pass = document.getElementById('password').value;
+            if (pass === PASSWORD) {
+                document.getElementById('login-section').style.display = 'none';
+                document.getElementById('connect-section').style.display = 'block';
+            } else {
+                alert('Contraseña incorrecta');
+            }
+        }
+
+        async function connect() {
+            const number = document.getElementById('number').value;
+            const res = await fetch('/api/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number })
+            });
+            const data = await res.json();
+            if (data.code) {
+                document.getElementById('code-result').innerText = "Código: " + data.code;
+            } else {
+                document.getElementById('code-result').innerText = "Error: " + data.error;
+            }
+        }
+    </script>
+</body>
+</html>
